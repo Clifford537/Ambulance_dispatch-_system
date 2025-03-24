@@ -5,51 +5,70 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { verifyAdmin , verifyToken } = require("../middleware/authMiddleware");
 
+/**
+ * @swagger
+ * tags:
+ *   name: Users
+ *   description: User management endpoints
+ */
 
-// Register User
+/**
+ * @swagger
+ * /users/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, role, email, password, phone_number_1]
+ *             properties:
+ *               name:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               phone_number_1:
+ *                 type: string
+ *               phone_number_2:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Validation error
+ *       500:
+ *         description: Server error
+ */
 router.post("/register", async (req, res) => {
     try {
         const { name, role, email, password, phone_number_1, phone_number_2 } = req.body;
 
-        // Check if all required fields are provided
         if (!name || !role || !email || !password || !phone_number_1) {
             return res.status(400).json({ message: "All required fields must be filled" });
         }
 
-        // Check if email already exists
         const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ message: "Email already in use" });
-        }
+        if (existingUser) return res.status(400).json({ message: "Email already in use" });
 
-        // Check if phone_number_1 already exists
         const existingPhone1 = await User.findOne({ phone_number_1 });
-        if (existingPhone1) {
-            return res.status(400).json({ message: "Primary phone number already in use" });
-        }
+        if (existingPhone1) return res.status(400).json({ message: "Primary phone number already in use" });
 
-        // Check if phone_number_2 already exists (if provided)
         if (phone_number_2) {
             const existingPhone2 = await User.findOne({ phone_number_2 });
-            if (existingPhone2) {
-                return res.status(400).json({ message: "Secondary phone number already in use" });
-            }
+            if (existingPhone2) return res.status(400).json({ message: "Secondary phone number already in use" });
         }
 
-        // Hash password before saving
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // Create new user
-        const newUser = new User({
-            name,
-            role,
-            email,
-            password: hashedPassword,  // Store hashed password
-            phone_number_1,
-            phone_number_2
-        });
-
+        const newUser = new User({ name, role, email, password: hashedPassword, phone_number_1, phone_number_2 });
         await newUser.save();
 
         res.status(201).json({ message: "User registered successfully", user: newUser });
@@ -59,114 +78,104 @@ router.post("/register", async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /users/login:
+ *   post:
+ *     summary: User login
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       400:
+ *         description: Invalid email or password
+ *       500:
+ *         description: Server error
+ */
 router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Validate input
         if (!email || !password) {
             return res.status(400).json({ message: "Email and password are required" });
         }
 
-        // Find user by email
         const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ message: "Invalid email or password" });
-        }
+        if (!user) return res.status(400).json({ message: "Invalid email or password" });
 
-        // Check password
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: "Invalid email or password" });
-        }
+        if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-        // Generate JWT
-        const token = jwt.sign(
-            { userId: user._id, role: user.role },
-            process.env.JWT_SECRET || "secretkey",
-            { expiresIn: "30m" }
-        );
+        const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET || "secretkey", { expiresIn: "30m" });
 
-        res.status(200).json({
-            message: "Login successful",
-            token,
-            user: { id: user._id, name: user.name, role: user.role, email: user.email },
-        });
+        res.status(200).json({ message: "Login successful", token, user: { id: user._id, name: user.name, role: user.role, email: user.email } });
     } catch (error) {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
 
-//  GET all users (Admin Only)
+/**
+ * @swagger
+ * /users:
+ *   get:
+ *     summary: Get all users (Admin only)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of users
+ *       500:
+ *         description: Server error
+ */
 router.get("/", verifyAdmin, async (req, res) => {
     try {
-        const users = await User.find().select("-password"); // Exclude password from response
+        const users = await User.find().select("-password");
         res.status(200).json(users);
     } catch (error) {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
 
-
-//  DELETE user by ID
+/**
+ * @swagger
+ * /users/{id}:
+ *   delete:
+ *     summary: Delete a user by ID
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
 router.delete("/:id", async (req, res) => {
     try {
         const user = await User.findByIdAndDelete(req.params.id);
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
+        if (!user) return res.status(404).json({ message: "User not found" });
+
         res.status(200).json({ message: "User deleted successfully" });
     } catch (error) {
-        res.status(500).json({ message: "Server error", error: error.message });
-    }
-});
-
-
-// Update user details
-router.put("/update", verifyToken, async (req, res) => {
-    try {
-        const { name, email, role, phone_number_1, phone_number_2 } = req.body;
-
-        // Ensure at least one field is provided
-        if (!name && !email && !phone_number_1 && !phone_number_2 && !role) {
-            return res.status(400).json({ message: "Provide at least one field to update." });
-        }
-
-        // Find user
-        const user = await User.findById(req.user.userId);
-        if (!user) {
-            return res.status(404).json({ message: "User not found." });
-        }
-
-        // Prevent updating email if it already exists
-        if (email && email !== user.email) {
-            const existingUser = await User.findOne({ email });
-            if (existingUser) {
-                return res.status(400).json({ message: "Email already in use." });
-            }
-        }
-
-        // Prevent updating phone_number_1 if it already exists
-        if (phone_number_1 && phone_number_1 !== user.phone_number_1) {
-            const existingPhone = await User.findOne({ phone_number_1 });
-            if (existingPhone) {
-                return res.status(400).json({ message: "Phone number already in use." });
-            }
-        }
-
-        // Update user details
-        if (name) user.name = name;
-        if (email) user.email = email;
-        if(role) user.role= role;
-        if (phone_number_1) user.phone_number_1 = phone_number_1;
-        if (phone_number_2) user.phone_number_2 = phone_number_2;
-
-        await user.save();
-
-        res.json({ message: "User updated successfully.", user });
-
-    } catch (error) {
-        console.error("Update error:", error.message);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });

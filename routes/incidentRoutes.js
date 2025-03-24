@@ -4,7 +4,45 @@ const Incident = require("../models/Incident");
 const User = require("../models/User");
 const { verifyAdmin, verifyToken } = require("../middleware/authMiddleware");
 
-// 📌 Create an incident (Accessible to any logged-in user)
+/**
+ * @swagger
+ * tags:
+ *   name: Incidents
+ *   description: Incident management API
+ */
+
+/**
+ * @swagger
+ * /api/incidents/create:
+ *   post:
+ *     summary: Report a new incident (Logged-in users only)
+ *     tags: [Incidents]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               location:
+ *                 type: object
+ *                 properties:
+ *                   coordinates:
+ *                     type: array
+ *                     items:
+ *                       type: number
+ *               incident_type:
+ *                 type: string
+ *               priority:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Incident reported successfully
+ *       400:
+ *         description: Missing required fields or invalid coordinates
+ */
 router.post("/create", verifyToken, async (req, res) => {
     try {
         const { location, incident_type, priority } = req.body;
@@ -13,7 +51,6 @@ router.post("/create", verifyToken, async (req, res) => {
             return res.status(400).json({ message: "Missing required fields" });
         }
 
-        // Validate coordinate format
         let [lat, lng] = location.coordinates;
         if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
             [lng, lat] = [lat, lng]; // Swap if incorrect
@@ -23,7 +60,6 @@ router.post("/create", verifyToken, async (req, res) => {
             return res.status(400).json({ message: "Invalid coordinates" });
         }
 
-        // Fetch user details from token
         const user = await User.findById(req.user.userId);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -31,12 +67,12 @@ router.post("/create", verifyToken, async (req, res) => {
 
         const correctedLocation = {
             type: "Point",
-            coordinates: [lng, lat] // Longitude first
+            coordinates: [lng, lat]
         };
 
         const newIncident = new Incident({
             user: req.user.userId,
-            phone: user.phone_number_1, // Auto-fetch phone from user details
+            phone: user.phone_number_1,
             location: correctedLocation,
             incident_type,
             priority
@@ -50,7 +86,18 @@ router.post("/create", verifyToken, async (req, res) => {
     }
 });
 
-// 📌 Get all incidents with full user details (Admin only)
+/**
+ * @swagger
+ * /api/incidents/view:
+ *   get:
+ *     summary: Get all incidents (Admin only)
+ *     tags: [Incidents]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of all incidents
+ */
 router.get("/view", verifyAdmin, async (req, res) => {
     try {
         const incidents = await Incident.find()
@@ -63,7 +110,26 @@ router.get("/view", verifyAdmin, async (req, res) => {
     }
 });
 
-// 📌 Get a specific incident by ID (Admin only)
+/**
+ * @swagger
+ * /api/incidents/{id}:
+ *   get:
+ *     summary: Get a specific incident by ID (Admin only)
+ *     tags: [Incidents]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Incident found
+ *       404:
+ *         description: Incident not found
+ */
 router.get("/:id", verifyAdmin, async (req, res) => {
     try {
         const incident = await Incident.findById(req.params.id)
@@ -80,7 +146,26 @@ router.get("/:id", verifyAdmin, async (req, res) => {
     }
 });
 
-// 📌 Delete an incident (Admin only)
+/**
+ * @swagger
+ * /api/incidents/{id}:
+ *   delete:
+ *     summary: Delete an incident (Admin only)
+ *     tags: [Incidents]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Incident deleted successfully
+ *       404:
+ *         description: Incident not found
+ */
 router.delete("/:id", verifyAdmin, async (req, res) => {
     try {
         const incident = await Incident.findById(req.params.id);

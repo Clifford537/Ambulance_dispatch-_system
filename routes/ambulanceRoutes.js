@@ -1,55 +1,94 @@
 const express = require("express");
 const router = express.Router();
 const Ambulance = require("../models/Ambulance");
-const { verifyAdmin } = require("../middleware/authMiddleware"); // Import middleware
+const { verifyAdmin } = require("../middleware/authMiddleware");
 
-// Create an ambulance (Admins only)
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Ambulance:
+ *       type: object
+ *       required:
+ *         - license_plate
+ *         - status
+ *         - hospital_name
+ *         - location
+ *       properties:
+ *         id:
+ *           type: string
+ *           description: The auto-generated ID of the ambulance
+ *         license_plate:
+ *           type: string
+ *           description: License plate of the ambulance
+ *         status:
+ *           type: string
+ *           enum: [available, on-duty, maintenance]
+ *           description: The current status of the ambulance
+ *         hospital_name:
+ *           type: string
+ *           description: The hospital associated with the ambulance
+ *         location:
+ *           type: object
+ *           properties:
+ *             type:
+ *               type: string
+ *               example: "Point"
+ *             coordinates:
+ *               type: array
+ *               items:
+ *                 type: number
+ *               example: [longitude, latitude]
+ *           description: The location of the ambulance
+ */
+
+/**
+ * @swagger
+ * /api/ambulances:
+ *   post:
+ *     summary: Create a new ambulance
+ *     security:
+ *       - bearerAuth: []
+ *     tags: [Ambulances]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Ambulance'
+ *     responses:
+ *       201:
+ *         description: Ambulance created successfully
+ *       400:
+ *         description: Missing required fields or invalid data
+ *       500:
+ *         description: Server error
+ */
 router.post("/", verifyAdmin, async (req, res) => {
     try {
         const { license_plate, status, hospital_name, location } = req.body;
 
-        // Ensure required fields are provided
         if (!license_plate || !status || !location || !location.coordinates) {
             return res.status(400).json({ message: "Missing required fields" });
         }
 
-        // Validate status
         const validStatuses = ["available", "on-duty", "maintenance"];
         if (!validStatuses.includes(status)) {
             return res.status(400).json({ message: "Invalid status value" });
         }
 
-        // Debugging: Log received coordinates
-        console.log("Received coordinates:", location.coordinates);
+        let [lat, lng] = location.coordinates;
+        if (Math.abs(lat) > 90 || Math.abs(lng) > 180) [lng, lat] = [lat, lng];
 
-        // Extract coordinates
-        let [lat, lng] = location.coordinates; // Incoming order might be incorrect
-
-        // Ensure correct coordinate order [longitude, latitude]
-        if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-            console.warn("Swapping coordinates due to invalid order...");
-            [lng, lat] = [lat, lng]; // Swap values
-        }
-
-        // Validate coordinate ranges
         if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-            return res.status(400).json({
-                message: "Invalid coordinates",
-                received: location.coordinates,
-                expected_format: "Coordinates should be [longitude, latitude]"
-            });
+            return res.status(400).json({ message: "Invalid coordinates" });
         }
 
-        // Construct corrected location
         const correctedLocation = {
             type: "Point",
-            coordinates: [lng, lat] // ✅ Longitude first, Latitude second
+            coordinates: [lng, lat]
         };
 
-        // Debugging: Log corrected location
-        console.log("Corrected coordinates:", correctedLocation.coordinates);
-
-        // Create and save the ambulance
         const ambulance = new Ambulance({
             license_plate,
             status,
@@ -58,58 +97,87 @@ router.post("/", verifyAdmin, async (req, res) => {
         });
 
         await ambulance.save();
-
         res.status(201).json({ message: "Ambulance created successfully", ambulance });
     } catch (error) {
-        console.error("Error saving ambulance:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
 
-// get all ambulances
+/**
+ * @swagger
+ * /api/ambulances:
+ *   get:
+ *     summary: Get all ambulances
+ *     security:
+ *       - bearerAuth: []
+ *     tags: [Ambulances]
+ *     responses:
+ *       200:
+ *         description: List of all ambulances
+ *       500:
+ *         description: Server error
+ */
 router.get("/", verifyAdmin, async (req, res) => {
     try {
         const ambulances = await Ambulance.find();
         res.status(200).json({ message: "Ambulances retrieved successfully", ambulances });
     } catch (error) {
-        console.error("Error fetching ambulances:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
 
-
-// Update an ambulance (Admin only)
+/**
+ * @swagger
+ * /api/ambulances/{id}:
+ *   put:
+ *     summary: Update an ambulance
+ *     security:
+ *       - bearerAuth: []
+ *     tags: [Ambulances]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ambulance ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Ambulance'
+ *     responses:
+ *       200:
+ *         description: Ambulance updated successfully
+ *       404:
+ *         description: Ambulance not found
+ *       500:
+ *         description: Server error
+ */
 router.put("/:id", verifyAdmin, async (req, res) => {
     try {
         const { id } = req.params;
         const { license_plate, status, hospital_name, location } = req.body;
 
-        // Validate status if provided
         const validStatuses = ["available", "on-duty", "maintenance"];
         if (status && !validStatuses.includes(status)) {
             return res.status(400).json({ message: "Invalid status value" });
         }
 
-        // Handle location validation and correction if provided
         let correctedLocation;
         if (location && location.coordinates) {
             let [lat, lng] = location.coordinates;
-            if (Math.abs(lat) > 90 || Math.abs(lng) > 180) [lng, lat] = [lat, lng]; // Swap if needed
+            if (Math.abs(lat) > 90 || Math.abs(lng) > 180) [lng, lat] = [lat, lng];
             if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
                 return res.status(400).json({ message: "Invalid coordinates" });
             }
             correctedLocation = { type: "Point", coordinates: [lng, lat] };
         }
 
-        // Update ambulance
         const updatedAmbulance = await Ambulance.findByIdAndUpdate(
             id,
-            {
-                license_plate,
-                status,
-                hospital_name,
-                location: correctedLocation || undefined
-            },
+            { license_plate, status, hospital_name, location: correctedLocation || undefined },
             { new: true, runValidators: true }
         );
 
@@ -119,24 +187,40 @@ router.put("/:id", verifyAdmin, async (req, res) => {
 
         res.status(200).json({ message: "Ambulance updated successfully", ambulance: updatedAmbulance });
     } catch (error) {
-        console.error("Error updating ambulance:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
 
-// Delete an ambulance (Admin only)
+/**
+ * @swagger
+ * /api/ambulances/{id}:
+ *   delete:
+ *     summary: Delete an ambulance
+ *     security:
+ *       - bearerAuth: []
+ *     tags: [Ambulances]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ambulance ID
+ *     responses:
+ *       200:
+ *         description: Ambulance deleted successfully
+ *       404:
+ *         description: Ambulance not found
+ *       500:
+ *         description: Server error
+ */
 router.delete("/:id", verifyAdmin, async (req, res) => {
     try {
-        const { id } = req.params;
-        const deletedAmbulance = await Ambulance.findByIdAndDelete(id);
-
-        if (!deletedAmbulance) {
-            return res.status(404).json({ message: "Ambulance not found" });
-        }
+        const deletedAmbulance = await Ambulance.findByIdAndDelete(req.params.id);
+        if (!deletedAmbulance) return res.status(404).json({ message: "Ambulance not found" });
 
         res.status(200).json({ message: "Ambulance deleted successfully" });
     } catch (error) {
-        console.error("Error deleting ambulance:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
