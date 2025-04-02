@@ -98,7 +98,7 @@ router.post("/create", verifyToken, async (req, res) => {
  *       200:
  *         description: List of all incidents
  */
-router.get("/view", verifyAdmin, async (req, res) => {
+router.get("/", verifyAdmin, async (req, res) => {
     try {
         const incidents = await Incident.find()
             .populate("user", "name email phone_number_1 phone_number_2 role date_of_birth location");

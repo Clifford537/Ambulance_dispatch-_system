@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Ambulance = require("../models/Ambulance");
-const { verifyAdmin } = require("../middleware/authMiddleware");
+const { verifyAdmin, verifyToken } = require("../middleware/authMiddleware");
 
 /**
  * @swagger
@@ -117,7 +117,7 @@ router.post("/", verifyAdmin, async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.get("/", verifyAdmin, async (req, res) => {
+router.get("/", verifyToken, async (req, res) => {
     try {
         const ambulances = await Ambulance.find();
         res.status(200).json({ message: "Ambulances retrieved successfully", ambulances });
