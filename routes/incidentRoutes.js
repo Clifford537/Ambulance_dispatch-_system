@@ -43,6 +43,7 @@ const { verifyAdmin, verifyToken } = require("../middleware/authMiddleware");
  *       400:
  *         description: Missing required fields or invalid coordinates
  */
+
 router.post("/create", verifyToken, async (req, res) => {
     try {
         const { location, incident_type, priority } = req.body;

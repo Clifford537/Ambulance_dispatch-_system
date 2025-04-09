@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const Driver = require("../models/Driver");
 const User = require("../models/User");
+const Ambulance = require("../models/Ambulance"); 
+
 const { verifyAdmin } = require("../middleware/authMiddleware");
 
 /**
@@ -40,27 +42,54 @@ const { verifyAdmin } = require("../middleware/authMiddleware");
  *       404:
  *         description: User not found
  */
+// Create a driver
+
+// Create driver
 router.post("/create", verifyAdmin, async (req, res) => {
-    try {
-        const { user_id, license_number, assigned_ambulance } = req.body;
+  try {
+    const { user_id, license_number, assigned_ambulance } = req.body;
 
-        const user = await User.findById(user_id);
-        if (!user) return res.status(404).json({ message: "User not found" });
-
-        const existingDriver = await Driver.findOne({ user: user_id });
-        if (existingDriver) return res.status(400).json({ message: "User is already a driver" });
-
-        user.role = "driver";
-        await user.save();
-
-        const driver = new Driver({ user: user_id, license_number, assigned_ambulance });
-        await driver.save();
-
-        res.status(201).json({ message: "Driver created successfully", driver });
-    } catch (error) {
-        res.status(500).json({ message: "Server error", error: error.message });
+    // Validate the incoming data
+    if (!user_id || !license_number) {
+      return res.status(400).json({ message: "User ID and License Number are required" });
     }
+
+    // Find the user by user_id
+    const user = await User.findById(user_id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Update the user's role to "driver"
+    user.role = "driver";
+    await user.save(); // Save the updated user
+
+    // Check if the assigned ambulance exists (optional)
+    let ambulanceData = null;
+    if (assigned_ambulance) {
+      ambulanceData = await Ambulance.findById(assigned_ambulance);
+      if (!ambulanceData) {
+        return res.status(404).json({ message: "Ambulance not found" });
+      }
+    }
+
+    // Create a new driver document
+    const newDriver = new Driver({
+      user_id: user._id, // Reference to the updated user
+      license_number,
+      assigned_ambulance: ambulanceData ? ambulanceData._id : null // Optional ambulance
+    });
+
+    // Save the new driver document to the database
+    await newDriver.save();
+
+    res.status(201).json({ message: "Driver created successfully", driver: newDriver });
+  } catch (err) {
+    console.error("Driver creation error:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
 });
+
 
 /**
  * @swagger
@@ -93,18 +122,13 @@ router.post("/create", verifyAdmin, async (req, res) => {
  *       404:
  *         description: Driver not found
  */
-router.put("/:id", verifyAdmin, async (req, res) => {
+router.get("/", verifyAdmin, async (req, res) => {
     try {
-        const { license_number, assigned_ambulance } = req.body;
-        const driver = await Driver.findById(req.params.id);
-        if (!driver) return res.status(404).json({ message: "Driver not found" });
-
-        if (license_number) driver.license_number = license_number;
-        if (assigned_ambulance !== undefined) driver.assigned_ambulance = assigned_ambulance;
-
-        await driver.save();
-        res.status(200).json({ message: "Driver updated successfully", driver });
+        // Fetch all drivers, optionally with populated user data
+        const drivers = await Driver.find().populate("user_id", "name email phone_number_1"); // Populate user data from User model
+        res.status(200).json(drivers);
     } catch (error) {
+        console.error("Error fetching drivers:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
@@ -155,14 +179,32 @@ router.delete("/:id", verifyAdmin, async (req, res) => {
  *       200:
  *         description: List of all drivers
  */
-router.get("/", verifyAdmin, async (req, res) => {
+// Driver Controller (PUT)
+router.put("/:id", verifyAdmin, async (req, res) => {
+    const { license_number, assigned_ambulance } = req.body; // Extract data from the request body
+
     try {
-        const drivers = await Driver.find().populate("user", "name email phone_number_1 role");
-        res.status(200).json(drivers);
+        // Find driver by ID
+        const driver = await Driver.findById(req.params.id);
+
+        if (!driver) {
+            return res.status(404).json({ message: "Driver not found" });
+        }
+
+        // Update driver data
+        driver.license_number = license_number || driver.license_number; // Only update if the field is provided
+        driver.assigned_ambulance = assigned_ambulance || driver.assigned_ambulance; // Only update if the field is provided
+
+        // Save the updated driver
+        await driver.save();
+
+        res.status(200).json({ message: "Driver updated successfully", driver });
     } catch (error) {
+        console.error("Error updating driver:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
+
 
 /**
  * @swagger
@@ -184,18 +226,72 @@ router.get("/", verifyAdmin, async (req, res) => {
  *       404:
  *         description: Driver not found
  */
+// Driver Controller (GET by ID)
 router.get("/:id", verifyAdmin, async (req, res) => {
     try {
-        const driver = await Driver.findById(req.params.id)
-            .populate("user", "name email phone_number_1 role")
-            .populate("assigned_ambulance", "license_plate status hospital_name location");
+        // Find the driver by ID and populate the user details
+        const driver = await Driver.findById(req.params.id).populate("user_id", "name email phone_number_1");
 
-        if (!driver) return res.status(404).json({ message: "Driver not found" });
+        if (!driver) {
+            return res.status(404).json({ message: "Driver not found" });
+        }
 
         res.status(200).json(driver);
     } catch (error) {
+        console.error("Error fetching driver:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
+
+
+// Driver Controller (DELETE)
+router.delete("/:id", verifyAdmin, async (req, res) => {
+    try {
+        // Find the driver by ID
+        const driver = await Driver.findById(req.params.id);
+
+        if (!driver) {
+            return res.status(404).json({ message: "Driver not found" });
+        }
+
+        // Remove the driver from the database
+        await driver.remove();
+
+        // Optionally, you can remove the role of the associated user and set it back to "user" if needed
+        await User.findByIdAndUpdate(driver.user_id, { role: "user" });
+
+        res.status(200).json({ message: "Driver deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting driver:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+});
+
+
+// Driver Controller (Revoke Driver Role)
+router.put("/revoke/:id", verifyAdmin, async (req, res) => {
+    try {
+        // Find the driver by ID
+        const driver = await Driver.findById(req.params.id);
+
+        if (!driver) {
+            return res.status(404).json({ message: "Driver not found" });
+        }
+
+        // Revoke the driver's role by updating the associated user role to "user"
+        await User.findByIdAndUpdate(driver.user_id, { role: "user" });
+
+        // Optionally, you can remove the driver's associated ambulance or reset the license number
+        driver.assigned_ambulance = null; // Clear the assigned ambulance
+        driver.license_number = null; // Remove the license number
+        await driver.save();
+
+        res.status(200).json({ message: "Driver role revoked successfully" });
+    } catch (error) {
+        console.error("Error revoking driver role:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+});
+
 
 module.exports = router;
