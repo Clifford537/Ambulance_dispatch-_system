@@ -2,7 +2,8 @@ const express = require("express");
 const router = express.Router();
 const Incident = require("../models/Incident");
 const User = require("../models/User");
-const { verifyAdmin, verifyToken } = require("../middleware/authMiddleware");
+const { verifyAdmin, verifyToken } = require("../middleware/authMiddleware");// Assuming you have a User model
+const Ambulance = require("../models/Ambulance"); 
 
 /**
  * @swagger
@@ -43,50 +44,101 @@ const { verifyAdmin, verifyToken } = require("../middleware/authMiddleware");
  *       400:
  *         description: Missing required fields or invalid coordinates
  */
+// Route to create a new incident
 
 router.post("/create", verifyToken, async (req, res) => {
     try {
-        const { location, incident_type, priority } = req.body;
-
-        if (!location || !location.coordinates || !incident_type || !priority) {
-            return res.status(400).json({ message: "Missing required fields" });
+      const { location, incident_type, priority, ambulanceId } = req.body;
+  
+      // Check if required fields are provided
+      if (!location || !location.coordinates || !incident_type || !priority) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+  
+      let [lat, lng] = location.coordinates;
+  
+      // Validate coordinates
+      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        [lng, lat] = [lat, lng]; // Swap if coordinates are in wrong order
+      }
+  
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({ message: "Invalid coordinates" });
+      }
+  
+      // Fetch the user from the token (middleware verifies the token)
+      const user = await User.findById(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+  
+      // Fetch the ambulance if provided
+      let ambulance = null;
+      if (ambulanceId) {
+        ambulance = await Ambulance.findById(ambulanceId);
+        if (!ambulance) {
+          return res.status(404).json({ message: "Ambulance not found" });
         }
-
-        let [lat, lng] = location.coordinates;
-        if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-            [lng, lat] = [lat, lng]; // Swap if incorrect
-        }
-
-        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-            return res.status(400).json({ message: "Invalid coordinates" });
-        }
-
-        const user = await User.findById(req.user.userId);
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
-        }
-
-        const correctedLocation = {
-            type: "Point",
-            coordinates: [lng, lat]
-        };
-
-        const newIncident = new Incident({
-            user: req.user.userId,
-            phone: user.phone_number_1,
-            location: correctedLocation,
-            incident_type,
-            priority
-        });
-
-        await newIncident.save();
-        res.status(201).json({ message: "Incident reported successfully", incident: newIncident });
+      }
+  
+      // Correct the location object to ensure it's in the proper format for geospatial queries
+      const correctedLocation = {
+        type: "Point",
+        coordinates: [lng, lat]
+      };
+  
+      // Create a new Incident
+      const newIncident = new Incident({
+        user: req.user.userId,
+        phone: user.phone_number_1, // Assuming the user model has phone_number_1
+        location: correctedLocation,
+        incident_type,
+        priority,
+        ambulance: ambulance ? ambulance._id : null // Associate the ambulance if it's provided
+      });
+  
+      // Save the new incident to the database
+      await newIncident.save();
+  
+      // Respond with a success message and the created incident
+      res.status(201).json({ message: "Incident reported successfully", incident: newIncident });
     } catch (error) {
-        console.error("Error creating incident:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+      console.error("Error creating incident:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
     }
-});
-
+  });
+  
+// Route to get all incidents for the logged-in user or all incidents for the dispatcher
+router.get("/", verifyToken, async (req, res) => {
+    try {
+      // Check if the logged-in user is a dispatcher or a regular user
+      const user = await User.findById(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+  
+      // If the user is a regular user, show only their incidents
+      if (user.role !== "dispatcher") {
+        const incidents = await Incident.find({ user: req.user.userId })
+          .populate("ambulance", "license_plate status hospital_name") // Populate ambulance data
+          .sort({ reported_time: -1 }); // Sort incidents by reported time (descending)
+        return res.status(200).json({ incidents });
+      }
+  
+      // If the user is a dispatcher, show all incidents
+      const incidents = await Incident.find()
+        .populate("user", "username phone_number_1") // Populate user details
+        .populate("ambulance", "license_plate status hospital_name") // Populate ambulance details
+        .sort({ reported_time: -1 }); // Sort incidents by reported time (descending)
+  
+      res.status(200).json({ incidents });
+    } catch (error) {
+      console.error("Error fetching incidents:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    }
+  });
+  
+  
 /**
  * @swagger
  * /api/incidents/view:
@@ -99,17 +151,7 @@ router.post("/create", verifyToken, async (req, res) => {
  *       200:
  *         description: List of all incidents
  */
-router.get("/", verifyAdmin, async (req, res) => {
-    try {
-        const incidents = await Incident.find()
-            .populate("user", "name email phone_number_1 phone_number_2 role date_of_birth location");
 
-        res.status(200).json(incidents);
-    } catch (error) {
-        console.error("Error fetching incidents:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
-    }
-});
 
 /**
  * @swagger
@@ -131,21 +173,32 @@ router.get("/", verifyAdmin, async (req, res) => {
  *       404:
  *         description: Incident not found
  */
-router.get("/:id", verifyAdmin, async (req, res) => {
+router.get("/user", verifyToken, async (req, res) => {
     try {
-        const incident = await Incident.findById(req.params.id)
-            .populate("user", "name email phone_number_1 phone_number_2 role date_of_birth location");
-
-        if (!incident) {
-            return res.status(404).json({ message: "Incident not found" });
-        }
-
-        res.status(200).json(incident);
+      // Get the logged-in user's details
+      const user = await User.findById(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+  
+      // Fetch incidents created by the logged-in user
+      const incidents = await Incident.find({ user: req.user.userId })
+        .populate("ambulance", "license_plate status hospital_name") // Populate ambulance details
+        .sort({ reported_time: -1 }); // Sort incidents by reported time (descending)
+  
+      // If no incidents are found
+      if (incidents.length === 0) {
+        return res.status(404).json({ message: "No incidents found for this user" });
+      }
+  
+      // Return the incidents
+      res.status(200).json({ incidents });
     } catch (error) {
-        console.error("Error fetching incident:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+      console.error("Error fetching incidents:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
     }
-});
+  });
+  
 
 /**
  * @swagger
@@ -167,19 +220,82 @@ router.get("/:id", verifyAdmin, async (req, res) => {
  *       404:
  *         description: Incident not found
  */
-router.delete("/:id", verifyAdmin, async (req, res) => {
-    try {
-        const incident = await Incident.findById(req.params.id);
-        if (!incident) {
-            return res.status(404).json({ message: "Incident not found" });
-        }
+// Route to approve and dispatch an ambulance to an incident
 
-        await Incident.findByIdAndDelete(req.params.id);
-        res.status(200).json({ message: "Incident deleted successfully" });
+router.post("/:incidentId/approve", verifyToken, async (req, res) => {
+    try {
+      // Ensure the logged-in user is a dispatcher
+      const user = await User.findById(req.user.userId);
+      if (!user || user.role !== "dispatcher") {
+        return res.status(403).json({ message: "Only dispatchers can approve incidents" });
+      }
+  
+      const { incidentId } = req.params;
+  
+      // Find the incident
+      const incident = await Incident.findById(incidentId);
+      if (!incident) {
+        return res.status(404).json({ message: "Incident not found" });
+      }
+  
+      // Check if the incident is already dispatched
+      if (incident.status === "dispatched") {
+        return res.status(400).json({ message: "This incident is already dispatched" });
+      }
+  
+      // Update the incident status to "dispatched"
+      incident.status = "dispatched";
+  
+      // Save the updated incident
+      await incident.save();
+  
+      res.status(200).json({
+        message: "Incident approved and dispatched successfully",
+        incident,
+      });
     } catch (error) {
-        console.error("Error deleting incident:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
+      console.error("Error approving incident:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
     }
-});
+  });
+
+  // Route to revoke an incident and deny the request
+router.post("/:incidentId/revoke", verifyToken, async (req, res) => {
+    try {
+      // Ensure the logged-in user is a dispatcher
+      const user = await User.findById(req.user.userId);
+      if (!user || user.role !== "dispatcher") {
+        return res.status(403).json({ message: "Only dispatchers can revoke incidents" });
+      }
+  
+      const { incidentId } = req.params;
+  
+      // Find the incident
+      const incident = await Incident.findById(incidentId);
+      if (!incident) {
+        return res.status(404).json({ message: "Incident not found" });
+      }
+  
+      // Check if the incident is already revoked
+      if (incident.status === "request-denied") {
+        return res.status(400).json({ message: "This incident has already been revoked" });
+      }
+  
+      // Update the incident status to "request-denied"
+      incident.status = "request-denied";
+  
+      // Save the updated incident
+      await incident.save();
+  
+      res.status(200).json({
+        message: "Incident request revoked successfully",
+        incident,
+      });
+    } catch (error) {
+      console.error("Error revoking incident:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
+    }
+  });
+  
 
 module.exports = router;
