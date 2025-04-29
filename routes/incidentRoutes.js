@@ -107,29 +107,18 @@ router.post("/create", verifyToken, async (req, res) => {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   });
-  
-// Route to get all incidents for the logged-in user or all incidents for the dispatcher
-router.get("/", verifyToken, async (req, res) => {
+  router.get("/", verifyToken, async (req, res) => {
     try {
-      // Check if the logged-in user is a dispatcher or a regular user
       const user = await User.findById(req.user.userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
   
-      // If the user is a regular user, show only their incidents
-      if (user.role !== "dispatcher") {
-        const incidents = await Incident.find({ user: req.user.userId })
-          .populate("ambulance", "license_plate status hospital_name") // Populate ambulance data
-          .sort({ reported_time: -1 }); // Sort incidents by reported time (descending)
-        return res.status(200).json({ incidents });
-      }
-  
-      // If the user is a dispatcher, show all incidents
+      // No role filtering — show all incidents to all authenticated users
       const incidents = await Incident.find()
-        .populate("user", "username phone_number_1") // Populate user details
-        .populate("ambulance", "license_plate status hospital_name") // Populate ambulance details
-        .sort({ reported_time: -1 }); // Sort incidents by reported time (descending)
+        .populate("user", "username phone_number_1")
+        .populate("ambulance", "license_plate status hospital_name")
+        .sort({ reported_time: -1 });
   
       res.status(200).json({ incidents });
     } catch (error) {
@@ -137,7 +126,6 @@ router.get("/", verifyToken, async (req, res) => {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   });
-  
   
 /**
  * @swagger
@@ -258,6 +246,26 @@ router.post("/:incidentId/approve", verifyToken, async (req, res) => {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   });
+// PATCH to update incident status
+router.patch('/:id', verifyToken, async (req, res) => {
+    try {
+        const { status } = req.body;
+        const updated = await Incident.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        );
+
+        if (!updated) {
+            return res.status(404).json({ message: "Incident not found" });
+        }
+
+        res.status(200).json(updated);
+    } catch (err) {
+        console.error("Error updating incident:", err.message);
+        res.status(500).json({ message: "Server error", error: err.message });
+    }
+});
 
   // Route to revoke an incident and deny the request
 router.post("/:incidentId/revoke", verifyToken, async (req, res) => {
@@ -296,6 +304,7 @@ router.post("/:incidentId/revoke", verifyToken, async (req, res) => {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   });
+
   
 
 module.exports = router;

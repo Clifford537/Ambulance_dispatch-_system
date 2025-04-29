@@ -118,7 +118,7 @@ router.post("/login", async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-        const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET || "secretkey", { expiresIn: "30m" });
+        const token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_SECRET || "secretkey", { expiresIn: "24h" });
 
         res.status(200).json({ message: "Login successful", token, user: { id: user._id, name: user.name, role: user.role, email: user.email } });
     } catch (error) {
@@ -179,5 +179,63 @@ router.delete("/:id", async (req, res) => {
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
+
+/**
+ * @swagger
+ * /users/{id}/role:
+ *   put:
+ *     summary: Update a user's role
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The user's ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [role]
+ *             properties:
+ *               role:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User role updated successfully
+ *       400:
+ *         description: Invalid input
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
+router.put("/:id/role", verifyAdmin, async (req, res) => {
+    try {
+        const { role } = req.body;
+
+        if (!role) {
+            return res.status(400).json({ message: "Role is required" });
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        user.role = role;
+        await user.save();
+
+        res.status(200).json({ message: "User role updated successfully", user });
+    } catch (error) {
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+});
+
 
 module.exports = router;

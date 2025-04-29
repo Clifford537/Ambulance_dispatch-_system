@@ -4,7 +4,7 @@ const Driver = require("../models/Driver");
 const User = require("../models/User");
 const Ambulance = require("../models/Ambulance"); 
 
-const { verifyAdmin } = require("../middleware/authMiddleware");
+const { verifyAdmin,verifyToken } = require("../middleware/authMiddleware");
 
 /**
  * @swagger
@@ -227,7 +227,7 @@ router.put("/:id", verifyAdmin, async (req, res) => {
  *         description: Driver not found
  */
 // Driver Controller (GET by ID)
-router.get("/:id", verifyAdmin, async (req, res) => {
+router.get("/:id", verifyToken, async (req, res) => {
     try {
         // Find the driver by ID and populate the user details
         const driver = await Driver.findById(req.params.id).populate("user_id", "name email phone_number_1");
