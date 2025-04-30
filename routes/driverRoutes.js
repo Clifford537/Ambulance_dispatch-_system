@@ -122,10 +122,9 @@ router.post("/create", verifyAdmin, async (req, res) => {
  *       404:
  *         description: Driver not found
  */
-router.get("/", verifyAdmin, async (req, res) => {
+router.get("/", verifyToken, async (req, res) => {
     try {
-        // Fetch all drivers, optionally with populated user data
-        const drivers = await Driver.find().populate("user_id", "name email phone_number_1"); // Populate user data from User model
+        const drivers = await Driver.find().populate("user_id", "name email phone_number_1"); 
         res.status(200).json(drivers);
     } catch (error) {
         console.error("Error fetching drivers:", error);
@@ -268,30 +267,6 @@ router.delete("/:id", verifyAdmin, async (req, res) => {
 });
 
 
-// Driver Controller (Revoke Driver Role)
-router.put("/revoke/:id", verifyAdmin, async (req, res) => {
-    try {
-        // Find the driver by ID
-        const driver = await Driver.findById(req.params.id);
-
-        if (!driver) {
-            return res.status(404).json({ message: "Driver not found" });
-        }
-
-        // Revoke the driver's role by updating the associated user role to "user"
-        await User.findByIdAndUpdate(driver.user_id, { role: "user" });
-
-        // Optionally, you can remove the driver's associated ambulance or reset the license number
-        driver.assigned_ambulance = null; // Clear the assigned ambulance
-        driver.license_number = null; // Remove the license number
-        await driver.save();
-
-        res.status(200).json({ message: "Driver role revoked successfully" });
-    } catch (error) {
-        console.error("Error revoking driver role:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
-    }
-});
 
 
 module.exports = router;

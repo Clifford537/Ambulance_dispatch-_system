@@ -169,16 +169,22 @@ router.get("/", verifyAdmin, async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.delete("/:id", async (req, res) => {
+// DELETE /api/drivers/:id
+router.delete("/:id", verifyAdmin, async (req, res) => {
     try {
-        const user = await User.findByIdAndDelete(req.params.id);
-        if (!user) return res.status(404).json({ message: "User not found" });
-
-        res.status(200).json({ message: "User deleted successfully" });
+      const driver = await Driver.findByIdAndDelete(req.params.id);
+  
+      if (!driver) {
+        return res.status(404).json({ message: "Driver not found" });
+      }
+  
+      res.status(200).json({ message: "Driver deleted successfully" });
     } catch (error) {
-        res.status(500).json({ message: "Server error", error: error.message });
+      console.error("Error deleting driver:", error);
+      res.status(500).json({ message: "Server error", error: error.message });
     }
-});
+  });
+  
 
 /**
  * @swagger
@@ -232,6 +238,34 @@ router.put("/:id/role", verifyAdmin, async (req, res) => {
         await user.save();
 
         res.status(200).json({ message: "User role updated successfully", user });
+    } catch (error) {
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
+});
+
+
+// Update all user details (admin only)
+router.put("/:id", verifyAdmin, async (req, res) => {
+    try {
+        const updates = req.body;
+
+        // Optionally: validate that role, if present, is valid
+        const validRoles = ["admin", "dispatcher", "user", "driver", "medic"];
+        if (updates.role && !validRoles.includes(updates.role)) {
+            return res.status(400).json({ message: "Invalid role provided" });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            req.params.id,
+            updates,
+            { new: true, runValidators: true }
+        ).select("-password");
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({ message: "User updated successfully", user: updatedUser });
     } catch (error) {
         res.status(500).json({ message: "Server error", error: error.message });
     }

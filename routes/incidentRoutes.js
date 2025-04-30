@@ -114,9 +114,9 @@ router.post("/create", verifyToken, async (req, res) => {
         return res.status(404).json({ message: "User not found" });
       }
   
-      // No role filtering — show all incidents to all authenticated users
+      // Fetch incidents and populate 'user' with 'name' and 'phone_number_1'
       const incidents = await Incident.find()
-        .populate("user", "username phone_number_1")
+        .populate("user", "name phone_number_1")  // Include 'name' and 'phone_number_1'
         .populate("ambulance", "license_plate status hospital_name")
         .sort({ reported_time: -1 });
   
