@@ -246,6 +246,7 @@ router.post("/:incidentId/approve", verifyToken, async (req, res) => {
       res.status(500).json({ message: "Server error", error: error.message });
     }
   });
+
 // PATCH to update incident status
 router.patch('/:id', verifyToken, async (req, res) => {
     try {
