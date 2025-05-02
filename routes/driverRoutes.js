@@ -154,18 +154,21 @@ router.get("/", verifyToken, async (req, res) => {
  */
 router.delete("/:id", verifyAdmin, async (req, res) => {
     try {
-        const driver = await Driver.findById(req.params.id).populate("user");
+        const driver = await Driver.findById(req.params.id).populate("user_id");
         if (!driver) return res.status(404).json({ message: "Driver not found" });
 
-        await User.findByIdAndUpdate(driver.user._id, { role: "user" });
+        // Revert the user's role to "user"
+        await User.findByIdAndUpdate(driver.user_id._id, { role: "user" });
+
+        // Delete the driver document
         await Driver.findByIdAndDelete(req.params.id);
 
         res.status(200).json({ message: "Driver role revoked, user reverted to regular user" });
     } catch (error) {
+        console.error("Error deleting driver:", error);
         res.status(500).json({ message: "Server error", error: error.message });
     }
 });
-
 /**
  * @swagger
  * /api/drivers:
@@ -243,28 +246,7 @@ router.get("/:id", verifyToken, async (req, res) => {
 });
 
 
-// Driver Controller (DELETE)
-router.delete("/:id", verifyAdmin, async (req, res) => {
-    try {
-        // Find the driver by ID
-        const driver = await Driver.findById(req.params.id);
 
-        if (!driver) {
-            return res.status(404).json({ message: "Driver not found" });
-        }
-
-        // Remove the driver from the database
-        await driver.remove();
-
-        // Optionally, you can remove the role of the associated user and set it back to "user" if needed
-        await User.findByIdAndUpdate(driver.user_id, { role: "user" });
-
-        res.status(200).json({ message: "Driver deleted successfully" });
-    } catch (error) {
-        console.error("Error deleting driver:", error);
-        res.status(500).json({ message: "Server error", error: error.message });
-    }
-});
 
 
 

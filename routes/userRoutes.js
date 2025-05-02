@@ -169,21 +169,22 @@ router.get("/", verifyAdmin, async (req, res) => {
  *       500:
  *         description: Server error
  */
-// DELETE /api/drivers/:id
+// DELETE /api/users/:id
 router.delete("/:id", verifyAdmin, async (req, res) => {
     try {
-      const driver = await Driver.findByIdAndDelete(req.params.id);
-  
-      if (!driver) {
-        return res.status(404).json({ message: "Driver not found" });
-      }
-  
-      res.status(200).json({ message: "Driver deleted successfully" });
+        const user = await User.findByIdAndDelete(req.params.id);
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.status(200).json({ message: "User deleted successfully" });
     } catch (error) {
-      console.error("Error deleting driver:", error);
-      res.status(500).json({ message: "Server error", error: error.message });
+        console.error("Error deleting user:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
     }
-  });
+});
+
   
 
 /**
